@@ -53,19 +53,19 @@ func NewController(client *k8s_client.Client) (*Controller, error) {
 		rcMapperDesc: prometheus.NewDesc(
 			"kubernetes_resource_hierarchy",
 			"Resource hierarchy of kubernetes",
-			[]string{"io_kubernetes_pod_uid", "kubernetes_pod_name", "kubernetes_namespace", "kubernetes_rc_name"},
+			[]string{"pod_uid", "pod_name", "namespace", "rc_name"},
 			nil,
 		),
 		dpMapperDesc: prometheus.NewDesc(
 			"kubernetes_resource_hierarchy",
 			"Resource hierarchy of kubernetes",
-			[]string{"io_kubernetes_pod_uid", "kubernetes_pod_name", "kubernetes_namespace", "kubernetes_rs_name", "kubernetes_dp_name"},
+			[]string{"pod_uid", "pod_name", "namespace", "rs_name", "dp_name"},
 			nil,
 		),
 		dsMapperDesc: prometheus.NewDesc(
 			"kubernetes_resource_hierarchy",
 			"Resource hierarchy of kubernetes",
-			[]string{"io_kubernetes_pod_uid", "kubernetes_pod_name", "kubernetes_namespace", "kubernetes_ds_name"},
+			[]string{"pod_uid", "pod_name", "namespace", "ds_name"},
 			nil,
 		),
 	}
