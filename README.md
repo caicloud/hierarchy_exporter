@@ -205,6 +205,7 @@ scrapes_total 7
 ```
 # How to use with cAdvisor metrics
 
-for example we want to get the cpu usage of a whole deployment, the original query will be `rate(container_cpu_usage_seconds_total[5m])`, it will list all the container's cpu usage. Because cAdvisor on expose `kubernetes_pod_name` label, so we could only aggregate the metric on pod: `sum(rate(container_cpu_usage_seconds_total{kubernetes_pod_name="abc"}[5m]))`.
+for example we want to get the cpu usage of a whole deployment, the original query will be `rate(container_cpu_usage_seconds_total[5m])`, it will list all the container's cpu usage. Because cAdvisor only expose `pod_name` label, so we could only aggregate the metric on pod: `sum(rate(container_cpu_usage_seconds_total{pod_name="abc"}[5m]))`.
+
 By using hierarchy exporter, now we can aggregate the metric on deployment/replicaset/replicationcontroller/daemonset:
-`rate(container_cpu_usage_seconds_total[5m]) * on (io_kubernetes_pod_uid) group_left (kubernetes_dp_name) kuberentes_resource_mapper {kubernetes_dp_name="abcabc"}` to get all the cpu usage of container in `abcabc` deployment, and aggregate using `sum(rate(container_cpu_usage_seconds_total[5m]) * on (io_kubernetes_pod_uid) group_left (kubernetes_dp_name) kuberentes_resource_mapper {kubernetes_dp_name="abcabc"})`
+`rate(container_cpu_usage_seconds_total[5m]) * on (pod_name, namespace) group_left (dp_name, rc_name, rs_name, ds_name) kuberentes_resource_mapper {dp_name="abcabc"}` to get all the cpu usage of container in `abcabc` deployment, and aggregate using `sum(rate(container_cpu_usage_seconds_total[5m]) * on (pod_name, namespace) group_left (dp_name) kuberentes_resource_mapper {dp_name="abcabc"})`
