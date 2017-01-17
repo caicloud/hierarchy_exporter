@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,36 +40,15 @@ type Controller struct {
 	podStore      cache.Store
 	dpController  *framework.Controller
 	dpStore       cache.Store
-	rcMapperDesc  *prometheus.Desc
-	dpMapperDesc  *prometheus.Desc
-	dsMapperDesc  *prometheus.Desc
-	mapper        map[string]*api.PodList
+	dpMapper      map[string]*api.PodList
 }
 
 // NewController returns Controller instance or an error
 func NewController(client *k8s_client.Client) (*Controller, error) {
 	c := &Controller{
-		client: client,
-		stopCh: make(chan struct{}),
-		mapper: map[string]*api.PodList{},
-		rcMapperDesc: prometheus.NewDesc(
-			"kubernetes_resource_hierarchy",
-			"Resource hierarchy of kubernetes",
-			[]string{"pod_uid", "pod_name", "namespace", "rc_name"},
-			nil,
-		),
-		dpMapperDesc: prometheus.NewDesc(
-			"kubernetes_resource_hierarchy",
-			"Resource hierarchy of kubernetes",
-			[]string{"pod_uid", "pod_name", "namespace", "rs_name", "dp_name"},
-			nil,
-		),
-		dsMapperDesc: prometheus.NewDesc(
-			"kubernetes_resource_hierarchy",
-			"Resource hierarchy of kubernetes",
-			[]string{"pod_uid", "pod_name", "namespace", "ds_name"},
-			nil,
-		),
+		client:   client,
+		stopCh:   make(chan struct{}),
+		dpMapper: map[string]*api.PodList{},
 	}
 
 	c.podStore, c.podController = framework.NewInformer(
@@ -111,7 +92,7 @@ func (c *Controller) updateDp(obj interface{}) {
 		log.Errorf("%v", err)
 		return
 	}
-	c.mapper[key] = pods
+	c.dpMapper[key] = pods
 }
 
 func (c *Controller) deleteDp(obj interface{}) {
@@ -121,7 +102,7 @@ func (c *Controller) deleteDp(obj interface{}) {
 		log.Errorf("%v", err)
 		return
 	}
-	delete(c.mapper, key)
+	delete(c.dpMapper, key)
 }
 
 func podListFunc(c *k8s_client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
@@ -184,6 +165,30 @@ func GetCreatedBy(pod *api.Pod) (*api.SerializedReference, error) {
 	return obj.(*api.SerializedReference), nil
 }
 
+func mergePodLablesAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, error) {
+	labels := map[string]string{}
+	labelPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	for k, v := range pod.Labels {
+		k = strings.Replace(k, "-", "_", -1)
+		if labelPattern.MatchString(k) {
+			labels[k] = v
+		}
+	}
+	for k, v := range pod.Annotations {
+		k = strings.Replace(k, "-", "_", -1)
+		if labelPattern.MatchString(k) {
+			labels[k] = v
+		}
+	}
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("no valid label or annotation")
+	}
+	labels["pod_uid"] = string(pod.GetUID())
+	labels["pod_name"] = pod.Name
+	labels["namespace"] = pod.Namespace
+	return labels, nil
+}
+
 // Scrap scrap pod to rc/rs/dp map
 func (c *Controller) Scrap(ch chan<- prometheus.Metric) error {
 	var err error
@@ -191,32 +196,47 @@ func (c *Controller) Scrap(ch chan<- prometheus.Metric) error {
 	for _, obj := range c.podStore.List() {
 		pod := obj.(*api.Pod)
 		createdBy, _ := GetCreatedBy(pod)
+		hierarchyLabels := map[string]string{
+			"pod_uid":   string(pod.GetUID()),
+			"pod_name":  pod.Name,
+			"namespace": pod.Namespace,
+		}
 		if createdBy != nil && createdBy.Reference.Kind == "ReplicationController" {
-			rc := createdBy.Reference.Name
+			hierarchyLabels["rc_name"] = createdBy.Reference.Name
 			ch <- prometheus.MustNewConstMetric(
-				c.rcMapperDesc, prometheus.GaugeValue, 1,
-				string(pod.GetUID()), pod.Name, pod.Namespace, rc,
-			)
+				prometheus.NewDesc("kubernetes_resource_hierarchy", "Resource hierarchy of kubernetes", []string{}, hierarchyLabels),
+				prometheus.GaugeValue, 1)
 		} else if createdBy != nil && createdBy.Reference.Kind == "DaemonSet" {
-			ds := createdBy.Reference.Name
+			hierarchyLabels["ds_name"] = createdBy.Reference.Name
 			ch <- prometheus.MustNewConstMetric(
-				c.dsMapperDesc, prometheus.GaugeValue, 1,
-				string(pod.GetUID()), pod.Name, pod.Namespace, ds,
-			)
+				prometheus.NewDesc("kubernetes_resource_hierarchy", "Resource hierarchy of kubernetes", []string{}, hierarchyLabels),
+				prometheus.GaugeValue, 1)
+		}
+		labels, err := mergePodLablesAndAnnotationsToPromLabels(pod)
+		if err == nil {
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("kubernetes_pod_label_mapper", "Lable mapper for kuberentes pods", []string{}, labels),
+				prometheus.GaugeValue, 1)
 		}
 	}
-	for key, podList := range c.mapper {
+	for key, podList := range c.dpMapper {
 		_, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
 			continue
 		}
 		for _, pod := range podList.Items {
 			createdBy, _ := GetCreatedBy(&pod)
+			labels := map[string]string{
+				"pod_uid":   string(pod.GetUID()),
+				"pod_name":  pod.Name,
+				"namespace": pod.Namespace,
+			}
 			if createdBy != nil && createdBy.Reference.Kind == "ReplicaSet" {
+				labels["dp_name"] = name
+				labels["rs_name"] = createdBy.Reference.Name
 				ch <- prometheus.MustNewConstMetric(
-					c.dpMapperDesc, prometheus.GaugeValue, 1,
-					string(pod.GetUID()), pod.Name, pod.Namespace, createdBy.Reference.Name, name,
-				)
+					prometheus.NewDesc("kubernetes_resource_hierarchy", "Resource hierarchy of kubernetes", []string{}, labels),
+					prometheus.GaugeValue, 1)
 			}
 		}
 	}
