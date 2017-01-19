@@ -165,7 +165,7 @@ func GetCreatedBy(pod *api.Pod) (*api.SerializedReference, error) {
 	return obj.(*api.SerializedReference), nil
 }
 
-func mergePodLablesAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, error) {
+func mergePodLabelsAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, error) {
 	labels := map[string]string{}
 	labelPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	for k, v := range pod.Labels {
@@ -189,8 +189,8 @@ func mergePodLablesAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, 
 	return labels, nil
 }
 
-// Scrap scrap pod to rc/rs/dp map
-func (c *Controller) Scrap(ch chan<- prometheus.Metric) error {
+// Scrape pod to rc/rs/dp map
+func (c *Controller) Scrape(ch chan<- prometheus.Metric) error {
 	var err error
 	err = nil
 	for _, obj := range c.podStore.List() {
@@ -212,10 +212,10 @@ func (c *Controller) Scrap(ch chan<- prometheus.Metric) error {
 				prometheus.NewDesc("kubernetes_resource_hierarchy", "Resource hierarchy of kubernetes", []string{}, hierarchyLabels),
 				prometheus.GaugeValue, 1)
 		}
-		labels, err := mergePodLablesAndAnnotationsToPromLabels(pod)
+		labels, err := mergePodLabelsAndAnnotationsToPromLabels(pod)
 		if err == nil {
 			ch <- prometheus.MustNewConstMetric(
-				prometheus.NewDesc("kubernetes_pod_label_mapper", "Lable mapper for kuberentes pods", []string{}, labels),
+				prometheus.NewDesc("kubernetes_pod_label_mapper", "Label mapper for kubernetes pods", []string{}, labels),
 				prometheus.GaugeValue, 1)
 		}
 	}

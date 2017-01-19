@@ -70,7 +70,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) {
 			e.error.Set(1)
 		}
 	}(time.Now())
-	if err = e.controller.Scrap(ch); err != nil {
+	if err = e.controller.Scrape(ch); err != nil {
 		log.Errorln("Error scraping for events:", err)
 	}
 }
