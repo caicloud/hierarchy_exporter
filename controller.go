@@ -170,12 +170,14 @@ func mergePodLabelsAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, 
 	labelPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	for k, v := range pod.Labels {
 		k = strings.Replace(k, "-", "_", -1)
+		k = strings.Replace(k, ".", "_", -1)
 		if labelPattern.MatchString(k) {
 			labels[k] = v
 		}
 	}
 	for k, v := range pod.Annotations {
 		k = strings.Replace(k, "-", "_", -1)
+		k = strings.Replace(k, ".", "_", -1)
 		if labelPattern.MatchString(k) {
 			labels[k] = v
 		}
