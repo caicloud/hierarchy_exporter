@@ -25,6 +25,26 @@ const (
 	resyncPeriod = 5 * time.Minute
 )
 
+const (
+	// These are annotations from helm deployed applications
+	// the aggregation is done based on these.
+	defaultPathKey      = "helm.sh/pollutant"
+	defaultNamespaceKey = "helm.sh/namespace"
+	defaultReleaseKey   = "helm.sh/release"
+	defaultRevisionKey  = "helm.sh/revision"
+)
+
+var (
+	// Mapping between annotations attached by helm and
+	// label names that will be added to a metrics
+	helmAnnotationMapping = map[string]string{
+		defaultPathKey:      "chart_path",
+		defaultNamespaceKey: "namespace",
+		defaultReleaseKey:   "release",
+		defaultRevisionKey:  "revision",
+	}
+)
+
 var (
 	keyFunc = cache.MetaNamespaceKeyFunc
 )
@@ -171,6 +191,7 @@ func mergePodLabelsAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, 
 	for k, v := range pod.Labels {
 		k = strings.Replace(k, "-", "_", -1)
 		k = strings.Replace(k, ".", "_", -1)
+		k = strings.Replace(k, "/", "_", -1)
 		if labelPattern.MatchString(k) {
 			labels[k] = v
 		}
@@ -178,6 +199,7 @@ func mergePodLabelsAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, 
 	for k, v := range pod.Annotations {
 		k = strings.Replace(k, "-", "_", -1)
 		k = strings.Replace(k, ".", "_", -1)
+		k = strings.Replace(k, "/", "_", -1)
 		if labelPattern.MatchString(k) {
 			labels[k] = v
 		}
@@ -189,6 +211,22 @@ func mergePodLabelsAndAnnotationsToPromLabels(pod *api.Pod) (map[string]string, 
 	labels["pod_name"] = pod.Name
 	labels["namespace"] = pod.Namespace
 	return labels, nil
+}
+
+func convertHelmAnnotationsToPromLabels(pod *api.Pod) map[string]string {
+	labels := map[string]string{}
+	labelPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	for k, v := range pod.Annotations {
+		promKey, exist := helmAnnotationMapping[k]
+		if !exist {
+			continue
+		}
+		// seems unnecessary, but we check anyways..
+		if labelPattern.MatchString(promKey) {
+			labels[promKey] = v
+		}
+	}
+	return labels
 }
 
 // Scrape pod to rc/rs/dp map
@@ -218,6 +256,14 @@ func (c *Controller) Scrape(ch chan<- prometheus.Metric) error {
 		if err == nil {
 			ch <- prometheus.MustNewConstMetric(
 				prometheus.NewDesc("kubernetes_pod_label_mapper", "Label mapper for kubernetes pods", []string{}, labels),
+				prometheus.GaugeValue, 1)
+		}
+		labels = convertHelmAnnotationsToPromLabels(pod)
+		if len(labels) != 0 {
+			labels["pod_uid"] = string(pod.GetUID())
+			labels["pod_name"] = pod.Name
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("kubernetes_helm_app_hierarchy", "Hierarchy of applications deployed by helm", []string{}, labels),
 				prometheus.GaugeValue, 1)
 		}
 	}
