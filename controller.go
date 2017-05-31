@@ -28,10 +28,9 @@ const (
 const (
 	// These are annotations from helm deployed applications
 	// the aggregation is done based on these.
-	defaultPathKey      = "helm.sh/pollutant"
+	defaultPathKey      = "helm.sh/path"
 	defaultNamespaceKey = "helm.sh/namespace"
 	defaultReleaseKey   = "helm.sh/release"
-	defaultRevisionKey  = "helm.sh/revision"
 )
 
 var (
@@ -41,7 +40,6 @@ var (
 		defaultPathKey:      "chart_path",
 		defaultNamespaceKey: "namespace",
 		defaultReleaseKey:   "release",
-		defaultRevisionKey:  "revision",
 	}
 )
 
