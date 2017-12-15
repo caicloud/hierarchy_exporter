@@ -18,7 +18,7 @@ pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
 DOCKER_IMAGE_NAME       ?= hierarchy-exporter
-DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
+DOCKER_IMAGE_TAG        ?= v0.2
 
 ifdef DEBUG
 	bindata_flags = -debug
@@ -51,11 +51,11 @@ tarball: promu
 	@echo ">> building release tarball"
 	@$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
 
-docker:
+container: build
 	@echo ">> building docker image"
 	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
 
-push:
+push: container
 	@docker push "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
 
 promu:
