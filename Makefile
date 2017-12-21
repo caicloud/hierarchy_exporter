@@ -1,66 +1,58 @@
-# Copyright 2015 The Prometheus Authors
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Copyright 2017 The Caicloud Authors.
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+# The old school Makefile, following are required targets. The Makefile is written
+# to allow building multiple binaries. You are free to add more targets or change
+# existing implementations, as long as the semantics are preserved.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#   make        - default to 'build' target
+#   make lint   - code analysis
+#   make test   - run unit test (or plus integration test)
+#   make build        - alias to build-local target
+#   make build-local  - build local binary targets
+#   make build-linux  - build linux binary targets
+#   make container    - build containers
+#   $ docker login registry -u username -p xxxxx
+#   make push    - push containers
+#   make clean   - clean up targets
+#
+# Not included but recommended targets:
+#   make e2e-test
+#
+# The makefile is also responsible to populate project version information.
+#
+# TODO: implement 'make push'
 
-GO    := GO15VENDOREXPERIMENT=1 go
-PROMU := $(GOPATH)/bin/promu
-pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
+#
+# Tweak the variables based on your project.
+#
+ROOT=github.com/caicloud/hierarchy_exporter
+TARGET=hierarchy-exporter
 
-PREFIX                  ?= $(shell pwd)
-BIN_DIR                 ?= $(shell pwd)
-DOCKER_IMAGE_NAME       ?= hierarchy-exporter
-DOCKER_IMAGE_TAG        ?= v0.2
+# Current version of the project.
+VERSION ?= v0.2.1
+REGISTRIES ?= cargo.caicloudprivatetest.com/caicloud
 
-ifdef DEBUG
-	bindata_flags = -debug
-endif
+.PHONY: build container push
 
+build-linux:
+	@for registry in $(REGISTRIES); do                                                \
+		docker run --rm                                                                \
+		  -v ${PWD}:/go/src/$(ROOT)                                                    \
+		  -w /go/src/$(ROOT)                                                           \
+		  -e GOOS=linux                                                                \
+		  -e GOARCH=amd64                                                              \
+		  -e CGO_ENABLED=0                                                             \
+		  -e GOPATH=/go                                                                \
+		  $${registry}/golang:1.9.2-alpine3.6                                        \
+		  go build -i -v .;                               			       \
+	done                                                                             \
 
-all: format build test
-
-test:
-	@echo ">> running tests"
-	@$(GO) test -short $(pkgs)
-
-style:
-	@echo ">> checking code style"
-	@! gofmt -d $(shell find . -path ./vendor -prune -o -name '*.go' -print) | grep '^'
-
-format:
-	@echo ">> formatting code"
-	@$(GO) fmt $(pkgs)
-
-vet:
-	@echo ">> vetting code"
-	@$(GO) vet $(pkgs)
-
-build: promu
-	@echo ">> building binaries"
-	@$(PROMU) build --prefix $(PREFIX)
-
-tarball: promu
-	@echo ">> building release tarball"
-	@$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
-
-container: build
-	@echo ">> building docker image"
-	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
+container: build-linux
+	@for registry in $(REGISTRIES); do                                              \
+		docker build -t $${registry}/${TARGET}:${VERSION} .;			\
+	done									        \
 
 push: container
-	@docker push "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
-
-promu:
-	@GOOS=$(shell uname -s | tr A-Z a-z) \
-	GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
-	$(GO) get -u github.com/prometheus/promu
-
-.PHONY: all style format build test vet tarball docker promu
+	@for registry in $(REGISTRIES); do                                              \
+		docker push $${registry}/${TARGET}:${VERSION};				\
+	done										\
