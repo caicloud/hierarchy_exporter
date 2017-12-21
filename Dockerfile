@@ -1,4 +1,4 @@
-FROM debian:jessie
+FROM cargo.caicloudprivatetest.com/caicloud/debian:jessie
 MAINTAINER zhoushaolei <shaolei@caicloud.io>
 
 # Set the timezone to Shanghai
